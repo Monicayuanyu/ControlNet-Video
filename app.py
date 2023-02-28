@@ -34,11 +34,13 @@ for name in names:
         continue
     subprocess.run(shlex.split(command), cwd='ControlNet/annotator/ckpts/')
 
-from model import Model
+from model import (DEFAULT_BASE_MODEL_FILENAME, DEFAULT_BASE_MODEL_REPO,
+                   DEFAULT_BASE_MODEL_URL, Model)
+
 model = Model()
 
 
-def controlnet(i, prompt, control_task, seed_in, ddim_steps, scale):
+def controlnet(i, prompt, control_task, seed_in, ddim_steps, scale, low_threshold, high_threshold, value_threshold, distance_threshold, bg_threshold):
     img= Image.open(i)
     np_img = np.array(img)
     
@@ -48,11 +50,11 @@ def controlnet(i, prompt, control_task, seed_in, ddim_steps, scale):
     image_resolution = 512
     detect_resolution = 512
     eta = 0.0
-    low_threshold = 100
-    high_threshold = 200
-    value_threshold = 0.1
-    distance_threshold = 0.1
-    bg_threshold = 0.4
+    #low_threshold = 100
+    #high_threshold = 200
+    #value_threshold = 0.1
+    #distance_threshold = 0.1
+    #bg_threshold = 0.4
     
     if control_task == 'Canny':
         result = model.process_canny(np_img, prompt, a_prompt, n_prompt, num_samples,
@@ -87,6 +89,15 @@ def controlnet(i, prompt, control_task, seed_in, ddim_steps, scale):
     im.save("your_file" + str(i) + ".jpeg")
     return "your_file" + str(i) + ".jpeg", "process_" + control_task + "_" + str(i) + ".jpeg"
 
+def change_task_options(task):
+    if task == "Canny" :
+        return canny_opt.update(visible=True), hough_opt.update(visible=False), normal_opt.update(visible=False)
+    elif task == "Hough" :
+        return canny_opt.update(visible=False),hough_opt.update(visible=True), normal_opt.update(visible=False)
+    elif task == "Normal" :
+        return canny_opt.update(visible=False),hough_opt.update(visible=False), normal_opt.update(visible=True)
+    else :
+        return canny_opt.update(visible=False),hough_opt.update(visible=False), normal_opt.update(visible=False)
 
 def get_frames(video_in):
     frames = []
@@ -143,7 +154,7 @@ def create_video(frames, fps, type):
     return type + "_result.mp4"
 
 
-def infer(prompt,video_in, control_task, seed_in, trim_value, ddim_steps, scale, gif_import):
+def infer(prompt,video_in, control_task, seed_in, trim_value, ddim_steps, scale, low_threshold, high_threshold, value_threshold, distance_threshold, bg_threshold, gif_import):
     print(f"""
     ———————————————
     {prompt}
@@ -165,7 +176,7 @@ def infer(prompt,video_in, control_task, seed_in, trim_value, ddim_steps, scale,
     print("set stop frames to: " + str(n_frame))
     
     for i in frames_list[0:int(n_frame)]:
-        controlnet_img = controlnet(i, prompt,control_task, seed_in, ddim_steps, scale)
+        controlnet_img = controlnet(i, prompt,control_task, seed_in, ddim_steps, scale,  low_threshold, high_threshold, value_threshold, distance_threshold, bg_threshold)
         #images = controlnet_img[0]
         #rgb_im = images[0].convert("RGB")
   
@@ -239,57 +250,91 @@ article = """
 with gr.Blocks(css='style.css') as demo:
     with gr.Column(elem_id="col-container"):
         gr.HTML(title)
+        gr.HTML("""
+                <a style="display:inline-block" href="https://huggingface.co/spaces/fffiloni/ControlNet-Video?duplicate=true"><img src="https://img.shields.io/badge/-Duplicate%20Space-blue?labelColor=white&style=flat&logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAP5JREFUOE+lk7FqAkEURY+ltunEgFXS2sZGIbXfEPdLlnxJyDdYB62sbbUKpLbVNhyYFzbrrA74YJlh9r079973psed0cvUD4A+4HoCjsA85X0Dfn/RBLBgBDxnQPfAEJgBY+A9gALA4tcbamSzS4xq4FOQAJgCDwV2CPKV8tZAJcAjMMkUe1vX+U+SMhfAJEHasQIWmXNN3abzDwHUrgcRGmYcgKe0bxrblHEB4E/pndMazNpSZGcsZdBlYJcEL9Afo75molJyM2FxmPgmgPqlWNLGfwZGG6UiyEvLzHYDmoPkDDiNm9JR9uboiONcBXrpY1qmgs21x1QwyZcpvxt9NS09PlsPAAAAAElFTkSuQmCC&logoWidth=14" alt="Duplicate Space"></a> 
+                """, elem_id="duplicate-container")
         with gr.Row():
             with gr.Column():
                 video_inp = gr.Video(label="Video source", source="upload", type="filepath", elem_id="input-vid")
                 video_out = gr.Video(label="ControlNet video result", elem_id="video-output")
-                with gr.Accordion("Detailed results", visible=False) as detailed_result:
-                    prep_video_out = gr.Video(label="Preprocessor video result", visible=False, elem_id="prep-video-output")
-                    files = gr.File(label="Files can be downloaded ;)", visible=False)
+                
                 with gr.Group(elem_id="share-btn-container", visible=False) as share_group:
                     community_icon = gr.HTML(community_icon_html)
                     loading_icon = gr.HTML(loading_icon_html)
                     share_button = gr.Button("Share to community", elem_id="share-btn")
+                
+                with gr.Accordion("Detailed results", visible=False) as detailed_result:
+                    prep_video_out = gr.Video(label="Preprocessor video result", visible=False, elem_id="prep-video-output")
+                    files = gr.File(label="Files can be downloaded ;)", visible=False)
+                
             with gr.Column():
                 #status = gr.Textbox()
                 
                 prompt = gr.Textbox(label="Prompt", placeholder="enter prompt", show_label=True, elem_id="prompt-in")
+                
                 with gr.Row():
                     control_task = gr.Dropdown(label="Control Task", choices=["Canny", "Depth", "Hed", "Hough", "Normal", "Pose", "Scribble", "Seg"], value="Pose", multiselect=False, elem_id="controltask-in")
                     seed_inp = gr.Slider(label="Seed", minimum=0, maximum=2147483647, step=1, value=123456, elem_id="seed-in")
+                
                 with gr.Row():
-                    
-                    trim_in = gr.Slider(label="Cut video at (s)", minimun=1, maximum=5, step=1, value=1)
+                    trim_in = gr.Slider(label="Cut video at (s)", minimun=1, maximum=10, step=1, value=1)
+                
                 with gr.Accordion("Advanced Options", open=False):
+                    with gr.Tab("Diffusion Settings"):
+                        with gr.Row(visible=False) as canny_opt:
+                            low_threshold = gr.Slider(label='Canny low threshold', minimum=1, maximum=255, value=100, step=1)
+                            high_threshold = gr.Slider(label='Canny high threshold', minimum=1, maximum=255, value=200, step=1)
+                        
+                        with gr.Row(visible=False) as hough_opt:
+                            value_threshold = gr.Slider(label='Hough value threshold (MLSD)', minimum=0.01, maximum=2.0, value=0.1, step=0.01)
+                            distance_threshold = gr.Slider(label='Hough distance threshold (MLSD)', minimum=0.01, maximum=20.0, value=0.1, step=0.01)
+                        
+                        with gr.Row(visible=False) as normal_opt:
+                            bg_threshold = gr.Slider(label='Normal background threshold', minimum=0.0, maximum=1.0, value=0.4, step=0.01)
+                        
+                        ddim_steps = gr.Slider(label='Steps', minimum=1, maximum=100, value=20, step=1)
+                        scale = gr.Slider(label='Guidance Scale', minimum=0.1, maximum=30.0, value=9.0, step=0.1)
                     
-                    ddim_steps = gr.Slider(label='Steps',
-                                       minimum=1,
-                                       maximum=100,
-                                       value=20,
-                                       step=1)
-                    scale = gr.Slider(label='Guidance Scale',
-                                  minimum=0.1,
-                                  maximum=30.0,
-                                  value=9.0,
-                                  step=0.1)
-                    
-                    gif_import = gr.File(label="import a GIF instead", file_types=['.gif'])
-                    gif_import.change(convert, gif_import, video_inp, queue=False)
+                    with gr.Tab("GIF import"):
+                        gif_import = gr.File(label="import a GIF instead", file_types=['.gif'])
+                        gif_import.change(convert, gif_import, video_inp, queue=False)
+
+                    with gr.Tab("Custom Model"):
+                        current_base_model = gr.Text(label='Current base model',
+                                             value=DEFAULT_BASE_MODEL_URL)
+                        with gr.Row():
+                            with gr.Column():
+                                base_model_repo = gr.Text(label='Base model repo',
+                                                      max_lines=1,
+                                                      placeholder=DEFAULT_BASE_MODEL_REPO,
+                                                      interactive=True)
+                                base_model_filename = gr.Text(
+                                     label='Base model file',
+                                     max_lines=1,
+                                     placeholder=DEFAULT_BASE_MODEL_FILENAME,
+                                     interactive=True)
+                            change_base_model_button = gr.Button('Change base model')
+                        
+                        gr.HTML(
+                            '''<p>You can use other base models by specifying the repository name and filename.<br />
+                                  The base model must be compatible with Stable Diffusion v1.5.</p>''')
+                
+                        change_base_model_button.click(fn=model.set_base_model,
+                                                       inputs=[
+                                                           base_model_repo,
+                                                           base_model_filename,
+                                                       ],
+                                                       outputs=current_base_model, queue=False)
                 
                 submit_btn = gr.Button("Generate ControlNet video")
-                
-                gr.HTML("""
-                <a style="display:inline-block" href="https://huggingface.co/spaces/fffiloni/ControlNet-Video?duplicate=true"><img src="https://img.shields.io/badge/-Duplicate%20Space-blue?labelColor=white&style=flat&logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAP5JREFUOE+lk7FqAkEURY+ltunEgFXS2sZGIbXfEPdLlnxJyDdYB62sbbUKpLbVNhyYFzbrrA74YJlh9r079973psed0cvUD4A+4HoCjsA85X0Dfn/RBLBgBDxnQPfAEJgBY+A9gALA4tcbamSzS4xq4FOQAJgCDwV2CPKV8tZAJcAjMMkUe1vX+U+SMhfAJEHasQIWmXNN3abzDwHUrgcRGmYcgKe0bxrblHEB4E/pndMazNpSZGcsZdBlYJcEL9Afo75molJyM2FxmPgmgPqlWNLGfwZGG6UiyEvLzHYDmoPkDDiNm9JR9uboiONcBXrpY1qmgs21x1QwyZcpvxt9NS09PlsPAAAAAElFTkSuQmCC&logoWidth=14" alt="Duplicate Space"></a> 
-                work with longer videos / skip the queue: 
-                """, elem_id="duplicate-container")
         
-        inputs = [prompt,video_inp,control_task, seed_inp, trim_in, ddim_steps, scale, gif_import]
+        inputs = [prompt,video_inp,control_task, seed_inp, trim_in, ddim_steps, scale, low_threshold, high_threshold, value_threshold, distance_threshold, bg_threshold, gif_import]
         outputs = [video_out, detailed_result, prep_video_out, files, share_group]
         #outputs = [status]
         
         
         gr.HTML(article)
-
+    control_task.change(change_task_options, inputs=[control_task], outputs=[canny_opt, hough_opt, normal_opt], queue=False)
     submit_btn.click(clean, inputs=[], outputs=[detailed_result, prep_video_out, video_out, files, share_group], queue=False)
     submit_btn.click(infer, inputs, outputs)
     share_button.click(None, [], [], _js=share_js)
