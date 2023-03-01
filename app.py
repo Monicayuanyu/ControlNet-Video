@@ -277,7 +277,7 @@ with gr.Blocks(css='style.css') as demo:
                     seed_inp = gr.Slider(label="Seed", minimum=0, maximum=2147483647, step=1, value=123456, elem_id="seed-in")
                 
                 with gr.Row():
-                    trim_in = gr.Slider(label="Cut video at (s)", minimun=1, maximum=10, step=1, value=1)
+                    trim_in = gr.Slider(label="Cut video at (s)", minimun=1, maximum=5, step=1, value=1)
                 
                 with gr.Accordion("Advanced Options", open=False):
                     with gr.Tab("Diffusion Settings"):
